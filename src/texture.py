@@ -1,8 +1,11 @@
 import pygame
 
-background = None
 
+class TextureManager:
+    def __init__(self):
+        self.background = None
 
-def load_textures():
-    global background
-    background = pygame.image.load("assets/backdrop_with_holes.png").convert_alpha()
+    def load(self):
+        self.background = pygame.image.load(
+            "assets/backdrop_with_holes.png"
+        ).convert_alpha()

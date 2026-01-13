@@ -11,3 +11,7 @@ for x in row2_x:
     GRID.append((x, 410))
 for x in row1_3_x:
     GRID.append((x, 610))
+
+# Difficulty progression
+SPAWN_INTERVAL_BASE = 1000
+SHOW_DURATION_BASE = 950
