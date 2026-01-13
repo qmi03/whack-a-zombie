@@ -1,3 +1,11 @@
+WIDTH, HEIGHT = 1280, 720
+
+BG_COLOR = (12, 20, 28)
+ZOMBIE_COLOR = (95, 175, 85)
+HIT_COLOR = (220, 50, 50)
+WHITE = (240, 245, 255)
+RED = (255, 50, 50)
+
 GRID = []
 # Row 1 & 3: x = 90*n for n=1,3,5,7,9,11,13 → 90,270,450,630,810,990,1170
 row1_3_x = [90 * n for n in range(1, 14, 2)]
