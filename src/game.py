@@ -25,11 +25,11 @@ class Game:
         self.level = 1
         self.game_over = False
         self.state = "PLAY"
-        self.show_debug = False
         self.holes = [False] * 20
         self.zombie_up_time = [0] * 20
         self.hit = [False] * 20
         self.last_spawn_attempt = pygame.time.get_ticks()
+        self.show_hitboxes = False
 
     def spawn_zombie(self):
         available = [i for i, up in enumerate(self.holes) if not up]
@@ -68,11 +68,6 @@ class Game:
         # Grinning mouth
         pygame.draw.arc(self.screen, (0, 0, 0), (x - 40, y - 18, 80, 48), 3.14, 0, 8)
 
-    def draw_debug_cross(self, x, y):
-        """Red crosses + circle for alignment testing"""
-        pygame.draw.line(self.screen, const.RED, (x - 40, y - 40), (x + 40, y + 40), 6)
-        pygame.draw.line(self.screen, const.RED, (x - 40, y + 40), (x + 40, y - 40), 6)
-        pygame.draw.circle(self.screen, const.RED, (x, y), 12, 4)
 
     def run(self):
         running = True
@@ -171,11 +166,13 @@ class Game:
                 if self.holes[i]:
                     self.draw_zombie(x, y, self.hit[i])
 
-            # Debug crosses (if enabled - press D)
-            if self.show_debug:
-                for x, y in const.GRID:
-                    self.draw_debug_cross(x, y)
+            if self.show_hitboxes:
+                for i, center in enumerate(const.GRID):
+                    rect = self.get_hole_rect(center)
+                    # Draw all hitboxes in red (always visible when toggled)
+                    pygame.draw.rect(self.screen, const.RED, rect, 3)
 
+                    pygame.draw.circle(self.screen, (255, 255, 255), rect.center, 5)
             # UI
             score_text = self.font.render(f"{self.score}", True, const.WHITE)
             lives_text = self.font.render(
@@ -201,13 +198,6 @@ class Game:
                     combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
                 )
             self.screen.blit(level_text, (40, 120))
-
-            # Debug info
-            if self.show_debug:
-                debug_text = self.small_font.render(
-                    "DEBUG ON (Press D to toggle)", True, const.RED
-                )
-                self.screen.blit(debug_text, (40, const.HEIGHT - 60))
 
             # Game Over
             if self.game_over:
