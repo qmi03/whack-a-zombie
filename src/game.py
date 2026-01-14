@@ -68,61 +68,59 @@ class Game:
         # Grinning mouth
         pygame.draw.arc(self.screen, (0, 0, 0), (x - 40, y - 18, 80, 48), 3.14, 0, 8)
 
+    def event_handler(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r and (self.game_over or self.state == "MENU"):
+                    self.reset()
+                    self.state = "PLAY"
+                    if pygame.mixer.music.get_busy():
+                        pygame.mixer.music.play(-1)
+                if event.key == pygame.K_h:  # Press H to toggle hitboxes
+                    self.show_hitboxes = not self.show_hitboxes
+                    print(f"Hitboxes: {'ON' if self.show_hitboxes else 'OFF'}")
+
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and self.state == "PLAY"
+                and not self.game_over
+            ):
+                if event.button == 1:  # Left click
+                    mouse_pos = event.pos
+                    hit_any = False
+                    for i, center in enumerate(const.GRID):
+                        if (
+                            self.get_hole_rect(center).collidepoint(mouse_pos)
+                            and self.holes[i]
+                            and not self.hit[i]
+                        ):
+                            self.hit[i] = True
+                            self.score += 10 + (
+                                self.combo // 3
+                            )  # Better scoring for chaos
+                            self.combo += 1
+                            self.max_combo = max(self.max_combo, self.combo)
+                            if self.soundtracks.hit:
+                                self.soundtracks.hit.play()
+                            hit_any = True
+                    if not hit_any and self.combo > 0:
+                        self.combo = 0
+                        if self.soundtracks.miss:
+                            self.soundtracks.miss.play()
 
     def run(self):
-        running = True
+        self.running = True
         self.state = "PLAY"
         self.soundtracks.play_music()
 
-        while running:
+        while self.running:
             self.clock.tick(60)
             current_time = pygame.time.get_ticks()
 
-            # ─── EVENTS ───────────────────────────────────────
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r and (
-                        self.game_over or self.state == "MENU"
-                    ):
-                        self.reset()
-                        self.state = "PLAY"
-                        if pygame.mixer.music.get_busy():
-                            pygame.mixer.music.play(-1)
-                    if event.key == pygame.K_d:  # Toggle debug mode
-                        self.show_debug = not self.show_debug
-                        print(f"Debug crosses: {'ON' if self.show_debug else 'OFF'}")
-
-                if (
-                    event.type == pygame.MOUSEBUTTONDOWN
-                    and self.state == "PLAY"
-                    and not self.game_over
-                ):
-                    if event.button == 1:  # Left click
-                        pos = event.pos
-                        hit_any = False
-                        for i, center in enumerate(const.GRID):
-                            if (
-                                self.get_hole_rect(center).collidepoint(pos)
-                                and self.holes[i]
-                                and not self.hit[i]
-                            ):
-                                self.hit[i] = True
-                                self.score += 10 + (
-                                    self.combo // 3
-                                )  # Better scoring for chaos
-                                self.combo += 1
-                                self.max_combo = max(self.max_combo, self.combo)
-                                if self.soundtracks.hit:
-                                    self.soundtracks.hit.play()
-                                hit_any = True
-                        if not hit_any and self.combo > 0:
-                            self.combo = 0
-                            if self.soundtracks.miss:
-                                self.soundtracks.miss.play()
-
+            self.event_handler()
             # ─── UPDATE ───────────────────────────────────────
             if self.state == "PLAY" and not self.game_over:
                 spawn_interval, show_duration, spawn_chance = (
