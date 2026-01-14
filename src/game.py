@@ -52,21 +52,11 @@ class Game:
 
     def get_hole_rect(self, pos):
         x, y = pos
-        # Tuned for ~180px horizontal / 200px vertical spacing - covers full hole area
-        return pygame.Rect(x - 75, y - 65, 150, 130)
+        return pygame.Rect(x - 40, y - 128, 80, 128)
 
     def draw_zombie(self, x, y, hit_state):
         """Draw zombie head - positioned to emerge from hole center"""
-        color = const.HIT_COLOR if hit_state else const.ZOMBIE_COLOR
-        # Head (slightly above center for "popping" effect)
-        pygame.draw.circle(self.screen, color, (x, y - 25), 60)
-        # Eyes (glowing white with black pupils)
-        pygame.draw.circle(self.screen, const.WHITE, (x - 22, y - 40), 16)
-        pygame.draw.circle(self.screen, const.WHITE, (x + 22, y - 40), 16)
-        pygame.draw.circle(self.screen, (0, 0, 0), (x - 22, y - 40), 9)
-        pygame.draw.circle(self.screen, (0, 0, 0), (x + 22, y - 40), 9)
-        # Grinning mouth
-        pygame.draw.arc(self.screen, (0, 0, 0), (x - 40, y - 18, 80, 48), 3.14, 0, 8)
+        self.screen.blit(self.textures.zombie_sprite, (x - 50, y - 128))
 
     def event_handler(self):
         for event in pygame.event.get():
