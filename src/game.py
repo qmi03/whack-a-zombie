@@ -17,6 +17,20 @@ class Game:
         )
         self.reset()
 
+    def run(self):
+        self.running = True
+        self.state = "PLAY"
+        self.soundtracks.play_music()
+
+        while self.running:
+            self.clock.tick(60)
+            current_time = pygame.time.get_ticks()
+
+            self.event_handler()
+            self.update(current_time)
+            self.draw()
+        pygame.quit()
+
     def reset(self):
         self.score = 0
         self.lives = 5
@@ -101,126 +115,111 @@ class Game:
                         if self.soundtracks.miss:
                             self.soundtracks.miss.play()
 
-    def run(self):
-        self.running = True
-        self.state = "PLAY"
-        self.soundtracks.play_music()
+    def update(self, current_time):
+        if self.state == "PLAY" and not self.game_over:
+            spawn_interval, show_duration, spawn_chance = self.get_current_difficulty()
 
-        while self.running:
-            self.clock.tick(60)
-            current_time = pygame.time.get_ticks()
+            # Level up every 40 points (adjusted for higher scores)
+            if self.score >= self.level * 40:
+                self.level += 1
 
-            self.event_handler()
-            # ─── UPDATE ───────────────────────────────────────
-            if self.state == "PLAY" and not self.game_over:
-                spawn_interval, show_duration, spawn_chance = (
-                    self.get_current_difficulty()
-                )
+            # Spawn attempts
+            if current_time - self.last_spawn_attempt > spawn_interval:
+                self.last_spawn_attempt = current_time
+                if random.random() < spawn_chance:
+                    self.spawn_zombie()
 
-                # Level up every 40 points (adjusted for higher scores)
-                if self.score >= self.level * 40:
-                    self.level += 1
-
-                # Spawn attempts
-                if current_time - self.last_spawn_attempt > spawn_interval:
-                    self.last_spawn_attempt = current_time
-                    if random.random() < spawn_chance:
-                        self.spawn_zombie()
-
-                # Check timeouts & auto-hide
-                for i in range(20):
-                    if self.holes[i]:
-                        elapsed = current_time - self.zombie_up_time[i]
-                        if not self.hit[i] and elapsed > show_duration:
-                            # Missed!
-                            self.holes[i] = False
-                            self.lives -= 1
-                            self.combo = 0
-                            if self.soundtracks.miss:
-                                self.soundtracks.miss.play()
-                            if self.lives <= 0:
-                                self.game_over = True
-                                self.state = "GAMEOVER"
-                        elif self.hit[i] and elapsed > 400:  # Quick squash animation
-                            self.holes[i] = False
-                            self.hit[i] = False
-
-            # ─── DRAW ─────────────────────────────────────────
-            # Background first
-            self.screen.blit(self.textures.background, (0, 0))
-
-            # Draw zombies OVER the background holes
-            for i, (x, y) in enumerate(const.GRID):
+            # Check timeouts & auto-hide
+            for i in range(20):
                 if self.holes[i]:
-                    self.draw_zombie(x, y, self.hit[i])
+                    elapsed = current_time - self.zombie_up_time[i]
+                    if not self.hit[i] and elapsed > show_duration:
+                        # Missed!
+                        self.holes[i] = False
+                        self.lives -= 1
+                        self.combo = 0
+                        if self.soundtracks.miss:
+                            self.soundtracks.miss.play()
+                        if self.lives <= 0:
+                            self.game_over = True
+                            self.state = "GAMEOVER"
+                    elif self.hit[i] and elapsed > 400:  # Quick squash animation
+                        self.holes[i] = False
+                        self.hit[i] = False
 
-            if self.show_hitboxes:
-                for i, center in enumerate(const.GRID):
-                    rect = self.get_hole_rect(center)
-                    # Draw all hitboxes in red (always visible when toggled)
-                    pygame.draw.rect(self.screen, const.RED, rect, 3)
+    def draw(self):
+        # Background
+        self.screen.blit(self.textures.background, (0, 0))
 
-                    pygame.draw.circle(self.screen, (255, 255, 255), rect.center, 5)
-            # UI
-            score_text = self.font.render(f"{self.score}", True, const.WHITE)
-            lives_text = self.font.render(
-                f"LIVES: {self.lives}",
-                True,
-                (255, 70, 70) if self.lives <= 2 else (160, 220, 255),
-            )
-            combo_text = (
-                self.small_font.render(f"COMBO x{self.combo}", True, (255, 220, 80))
-                if self.combo >= 3
-                else None
-            )
-            level_text = self.small_font.render(
-                f"LEVEL {self.level}", True, (180, 255, 180)
-            )
+        # Draw zombies OVER the background holes
+        for i, (x, y) in enumerate(const.GRID):
+            if self.holes[i]:
+                self.draw_zombie(x, y, self.hit[i])
 
-            self.screen.blit(score_text, (40, 20))
+        if self.show_hitboxes:
+            for i, center in enumerate(const.GRID):
+                rect = self.get_hole_rect(center)
+                # Draw all hitboxes in red (always visible when toggled)
+                pygame.draw.rect(self.screen, const.RED, rect, 3)
+
+                pygame.draw.circle(self.screen, (255, 255, 255), rect.center, 5)
+        # UI
+        score_text = self.font.render(f"{self.score}", True, const.WHITE)
+        lives_text = self.font.render(
+            f"LIVES: {self.lives}",
+            True,
+            (255, 70, 70) if self.lives <= 2 else (160, 220, 255),
+        )
+        combo_text = (
+            self.small_font.render(f"COMBO x{self.combo}", True, (255, 220, 80))
+            if self.combo >= 3
+            else None
+        )
+        level_text = self.small_font.render(
+            f"LEVEL {self.level}", True, (180, 255, 180)
+        )
+
+        self.screen.blit(score_text, (40, 20))
+        self.screen.blit(lives_text, (const.WIDTH - lives_text.get_width() - 40, 20))
+        if combo_text:
             self.screen.blit(
-                lives_text, (const.WIDTH - lives_text.get_width() - 40, 20)
+                combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
             )
-            if combo_text:
-                self.screen.blit(
-                    combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
-                )
-            self.screen.blit(level_text, (40, 120))
+        self.screen.blit(level_text, (40, 120))
 
-            # Game Over
-            if self.game_over:
-                overlay = pygame.Surface((const.WIDTH, const.HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
-                self.screen.blit(overlay, (0, 0))
+        # Game Over
+        if self.game_over:
+            overlay = pygame.Surface((const.WIDTH, const.HEIGHT), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 180))
+            self.screen.blit(overlay, (0, 0))
 
-                go_text = self.font.render("GAME OVER", True, (255, 60, 60))
-                final_text = self.small_font.render(
-                    f"Final Score: {self.score} | Best Combo: {self.max_combo}",
-                    True,
-                    (220, 220, 240),
-                )
-                restart_text = self.small_font.render(
-                    "Press R to play again", True, (160, 240, 160)
-                )
+            go_text = self.font.render("GAME OVER", True, (255, 60, 60))
+            final_text = self.small_font.render(
+                f"Final Score: {self.score} | Best Combo: {self.max_combo}",
+                True,
+                (220, 220, 240),
+            )
+            restart_text = self.small_font.render(
+                "Press R to play again", True, (160, 240, 160)
+            )
 
-                self.screen.blit(
-                    go_text,
-                    (
-                        const.WIDTH // 2 - go_text.get_width() // 2,
-                        const.HEIGHT // 2 - 100,
-                    ),
-                )
-                self.screen.blit(
-                    final_text,
-                    (const.WIDTH // 2 - final_text.get_width() // 2, const.HEIGHT // 2),
-                )
-                self.screen.blit(
-                    restart_text,
-                    (
-                        const.WIDTH // 2 - restart_text.get_width() // 2,
-                        const.HEIGHT // 2 + 80,
-                    ),
-                )
+            self.screen.blit(
+                go_text,
+                (
+                    const.WIDTH // 2 - go_text.get_width() // 2,
+                    const.HEIGHT // 2 - 100,
+                ),
+            )
+            self.screen.blit(
+                final_text,
+                (const.WIDTH // 2 - final_text.get_width() // 2, const.HEIGHT // 2),
+            )
+            self.screen.blit(
+                restart_text,
+                (
+                    const.WIDTH // 2 - restart_text.get_width() // 2,
+                    const.HEIGHT // 2 + 80,
+                ),
+            )
 
-            pygame.display.flip()
-        pygame.quit()
+        pygame.display.flip()
