@@ -53,8 +53,6 @@ class Game:
         self.holes[idx] = True
         self.zombie_up_time[idx] = pygame.time.get_ticks()
         self.hit[idx] = False
-        if self.soundtracks.pop:
-            self.soundtracks.pop.play()
         return True
 
     # ==================== HELPERS ====================

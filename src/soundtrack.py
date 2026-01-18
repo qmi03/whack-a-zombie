@@ -4,12 +4,13 @@ import pygame
 class SoundManager:
     def __init__(self):
         self.hit = None
-        self.pop = None
         self.miss = None
 
     def load(self):
         try:
             self.hit = pygame.mixer.Sound("assets/hit.wav")
+            self.miss = pygame.mixer.Sound("assets/miss.wav")
+            self.miss.set_volume(0.4)
 
             pygame.mixer.music.load("assets/Plants vs Zombies Soundtrack/Loonboon.ogg")
             pygame.mixer.music.set_volume(0.4)
