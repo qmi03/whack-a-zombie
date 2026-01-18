@@ -84,6 +84,8 @@ class Game:
                 if event.key == pygame.K_h:  # Press H to toggle hitboxes
                     self.show_hitboxes = not self.show_hitboxes
                     print(f"Hitboxes: {'ON' if self.show_hitboxes else 'OFF'}")
+                if event.key == pygame.K_q:  # Press Q to quit
+                    self.running = False
 
             if (
                 event.type == pygame.MOUSEBUTTONDOWN
