@@ -18,6 +18,9 @@ class Game:
         self.reset()
         self.state = "MENU"
         self.show_hitboxes = False
+        self.zombie_w = self.textures.zombie_sprite.get_width()  # 80
+        self.zombie_h = self.textures.zombie_sprite.get_height()  # 128
+        self.half_w = self.zombie_w // 2  # 40
 
     def run(self):
         self.running = True
@@ -64,11 +67,15 @@ class Game:
 
     def get_hole_rect(self, pos):
         x, y = pos
-        return pygame.Rect(x - 50, y - 128, 90, 128)
+        return pygame.Rect(
+            x - self.half_w - 10, y - self.zombie_h, self.zombie_w + 10, self.zombie_h
+        )
 
-    def draw_zombie(self, x, y, hit_state):
-        """Draw zombie head - positioned to emerge from hole center"""
-        self.screen.blit(self.textures.zombie_sprite, (x - 50, y - 128))
+    def draw_zombie(self, x, y, is_hit):
+        if not is_hit:
+            self.screen.blit(self.textures.zombie_sprite, (x - 50, y - 128))
+        else:
+            self.screen.blit(self.textures.zombie_sprite_squashed, (x - 50, y - 20))
 
     def event_handler(self):
         for event in pygame.event.get():
@@ -149,7 +156,7 @@ class Game:
                         if self.lives <= 0:
                             self.game_over = True
                             self.state = "GAMEOVER"
-                    elif self.hit[i] and elapsed > 400:  # Quick squash animation
+                    elif self.hit[i] and elapsed > 1000:  # Quick squash animation
                         self.holes[i] = False
                         self.hit[i] = False
 
@@ -231,8 +238,12 @@ class Game:
             resume_text = self.small_font.render(
                 "SPACE to resume (Q quit)", True, (160, 240, 160)
             )
-            paused_rect = paused_text.get_rect(center=(const.WIDTH // 2, const.HEIGHT // 2 - 40))
-            resume_rect = resume_text.get_rect(center=(const.WIDTH // 2, const.HEIGHT // 2 + 40))
+            paused_rect = paused_text.get_rect(
+                center=(const.WIDTH // 2, const.HEIGHT // 2 - 40)
+            )
+            resume_rect = resume_text.get_rect(
+                center=(const.WIDTH // 2, const.HEIGHT // 2 + 40)
+            )
             self.screen.blit(paused_text, paused_rect)
             self.screen.blit(resume_text, resume_rect)
 

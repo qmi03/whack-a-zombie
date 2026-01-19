@@ -12,3 +12,6 @@ class TextureManager:
         ).convert_alpha()
         self.zombie_sprite = pygame.image.load("assets/sprite.png").convert_alpha()
         self.zombie_sprite = pygame.transform.smoothscale(self.zombie_sprite, (80, 128))
+        self.zombie_sprite_squashed = pygame.transform.smoothscale(
+            self.zombie_sprite, (80, 20)
+        )
