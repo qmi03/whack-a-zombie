@@ -214,7 +214,7 @@ class Game:
                         if self.lives <= 0:
                             self.game_over = True
                             self.state = "GAMEOVER"
-                    elif self.hit[i] and elapsed > 1000:  # Quick squash animation
+                    elif self.hit[i] and elapsed > 2000:  # Quick squash animation
                         self.holes[i] = False
                         self.hit[i] = False
 
