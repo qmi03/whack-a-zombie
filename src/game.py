@@ -64,7 +64,7 @@ class Game:
 
     def get_hole_rect(self, pos):
         x, y = pos
-        return pygame.Rect(x - 40, y - 128, 80, 128)
+        return pygame.Rect(x - 50, y - 128, 90, 128)
 
     def draw_zombie(self, x, y, hit_state):
         """Draw zombie head - positioned to emerge from hole center"""
