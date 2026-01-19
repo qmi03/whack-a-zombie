@@ -57,8 +57,8 @@ class Game:
 
     # ==================== HELPERS ====================
     def get_current_difficulty(self):
-        spawn_int = max(350, const.SPAWN_INTERVAL_BASE - (self.level * 65))
-        show_dur = max(500, const.SHOW_DURATION_BASE - (self.level * 55))
+        spawn_int = max(500, const.SPAWN_INTERVAL_BASE - (self.level * 65))
+        show_dur = max(1500, const.SHOW_DURATION_BASE - (self.level * 55))
         spawn_chance = min(0.92, 0.60 + self.level * 0.06)
         return spawn_int, show_dur, spawn_chance
 
