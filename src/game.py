@@ -1,28 +1,132 @@
+"""Main game logic and state management."""
+
 import random
 
 import pygame
 
 from . import const
+from .zombie import ZombieManager
+
+
+class GameState:
+    """Manages game state and statistics."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        """Reset game to initial state."""
+        self.score = 0
+        self.lives = const.STARTING_LIVES
+        self.combo = 0
+        self.max_combo = 0
+        self.level = 1
+        self.is_game_over = False
+
+    def add_score(self, points):
+        """Add points to score and check for level up."""
+        self.score += points
+        # Level up every POINTS_PER_LEVEL points
+        new_level = (self.score // const.POINTS_PER_LEVEL) + 1
+        if new_level > self.level:
+            self.level = new_level
+
+    def increment_combo(self):
+        """Increase combo counter."""
+        self.combo += 1
+        self.max_combo = max(self.max_combo, self.combo)
+
+    def break_combo(self):
+        """Reset combo to zero."""
+        self.combo = 0
+
+    def lose_life(self):
+        """Decrease lives and check for game over."""
+        self.lives -= 1
+        if self.lives <= 0:
+            self.is_game_over = True
+
+    def get_combo_bonus(self):
+        """Calculate bonus points from current combo."""
+        return self.combo // const.COMBO_BONUS_DIVISOR
+
+
+class DifficultyManager:
+    """Calculates difficulty parameters based on current level."""
+
+    @staticmethod
+    def get_spawn_interval(level):
+        """Get time between spawn attempts (decreases with level)."""
+        interval = const.SPAWN_INTERVAL_BASE - (
+            level * const.SPAWN_INTERVAL_DECREASE_PER_LEVEL
+        )
+        return max(const.MIN_SPAWN_INTERVAL, interval)
+
+    @staticmethod
+    def get_show_duration(level):
+        """Get how long zombies stay visible (decreases with level)."""
+        duration = const.SHOW_DURATION_BASE - (
+            level * const.SHOW_DURATION_DECREASE_PER_LEVEL
+        )
+        return max(const.MIN_SHOW_DURATION, duration)
+
+    @staticmethod
+    def get_spawn_chance(level):
+        """Get probability of spawn attempt succeeding (increases with level)."""
+        chance = const.BASE_SPAWN_CHANCE + (level * const.SPAWN_CHANCE_INCREASE)
+        return min(const.MAX_SPAWN_CHANCE, chance)
+
+    @classmethod
+    def get_difficulty(cls, level):
+        """Get all difficulty parameters for the current level."""
+        return {
+            "spawn_interval": cls.get_spawn_interval(level),
+            "show_duration": cls.get_show_duration(level),
+            "spawn_chance": cls.get_spawn_chance(level),
+        }
 
 
 class Game:
+    """Main game controller."""
+
+    # Game states
+    STATE_MENU = "MENU"
+    STATE_PLAY = "PLAY"
+    STATE_PAUSE = "PAUSE"
+    STATE_GAMEOVER = "GAMEOVER"
+
     def __init__(self, screen, textures, soundtracks):
         self.screen = screen
         self.textures = textures
         self.soundtracks = soundtracks
+
+        # Timing
         self.clock = pygame.time.Clock()
-        self.font = pygame.font.Font("assets/pixel_square/Pixel Square Bold10.ttf", 64)
-        self.small_font = pygame.font.Font(
+        self.last_spawn_attempt = 0
+
+        # Fonts
+        self.font_large = pygame.font.Font(
+            "assets/pixel_square/Pixel Square Bold10.ttf", 64
+        )
+        self.font_small = pygame.font.Font(
             "assets/pixel_square/Pixel Square 10.ttf", 36
         )
-        self.reset()
-        self.state = "MENU"
+
+        # Game state
+        self.state = self.STATE_MENU
+        self.game_state = GameState()
+        self.zombie_manager = ZombieManager(len(const.GRID_POSITIONS))
+
+        # Debug
         self.show_hitboxes = False
-        self.zombie_w = self.textures.zombie_sprite.get_width()  # 80
-        self.zombie_h = self.textures.zombie_sprite.get_height()  # 128
-        self.half_w = self.zombie_w // 2  # 40
+
+        # Cache sprite dimensions
+        self.zombie_width = self.textures.zombie_sprite.get_width()
+        self.zombie_height = self.textures.zombie_sprite.get_height()
+        self.zombie_half_width = self.zombie_width // 2
 
     def run(self):
+        """Main game loop."""
         self.running = True
         self.soundtracks.play_music()
 
@@ -30,318 +134,350 @@ class Game:
             self.clock.tick(60)
             current_time = pygame.time.get_ticks()
 
-            self.event_handler()
-            self.update(current_time)
-            self.draw(current_time)
+            self._handle_events()
+            self._update(current_time)
+            self._render(current_time)
+
         pygame.quit()
 
-    def reset(self):
-        self.score = 0
-        self.lives = 5
-        self.combo = 0
-        self.max_combo = 0
-        self.level = 1
-        self.game_over = False
-        self.state = "PLAY"
-        self.holes = [False] * 20
-        self.zombie_up_time = [0] * 20
-        self.hit = [False] * 20
+    def reset_game(self):
+        """Reset game for new playthrough."""
+        self.game_state.reset()
+        self.zombie_manager.reset()
+        self.state = self.STATE_PLAY
         self.last_spawn_attempt = pygame.time.get_ticks()
 
-    def spawn_zombie(self):
-        available = [i for i, up in enumerate(self.holes) if not up]
-        if not available:
-            return False
-        idx = random.choice(available)
-        self.holes[idx] = True
-        self.zombie_up_time[idx] = pygame.time.get_ticks()
-        self.hit[idx] = False
-        return True
+    # ==================== EVENT HANDLING ====================
 
-    # ==================== HELPERS ====================
-    def get_current_difficulty(self):
-        spawn_int = max(500, const.SPAWN_INTERVAL_BASE - (self.level * 65))
-        show_dur = max(1500, const.SHOW_DURATION_BASE - (self.level * 55))
-        spawn_chance = min(0.92, 0.60 + self.level * 0.06)
-        return spawn_int, show_dur, spawn_chance
-
-    def get_hole_rect(self, pos):
-        x, y = pos
-        return pygame.Rect(
-            x - self.half_w - 10, y - self.zombie_h, self.zombie_w + 10, self.zombie_h
-        )
-
-    def draw_zombie(self, x, y, is_hit, visible_h, time_remaining_ratio=1.0):
-        if is_hit:
-            self.screen.blit(
-                self.textures.zombie_sprite_squashed,
-                (x - 50, y - 20),
-            )
-            return
-
-        if visible_h <= 0:
-            return
-
-        # Crop from TOP downward (head appears first)
-        crop_rect = pygame.Rect(
-            0,
-            0,  # Start from top of sprite (head)
-            self.zombie_w,
-            visible_h,
-        )
-
-        cropped = self.textures.zombie_sprite.subsurface(crop_rect)
-
-        # Position so the cropped portion appears at the bottom and rises up
-        self.screen.blit(
-            cropped,
-            (x - 50, y - visible_h),
-        )
-
-        # Draw timer bar above zombie head
-        if visible_h >= self.zombie_h * 0.8:  # Only show when mostly risen
-            bar_width = 60
-            bar_height = 6
-            bar_x = x - bar_width // 2 - 10
-            bar_y = y - visible_h - 15
-
-            # Background (dark)
-            pygame.draw.rect(
-                self.screen, (40, 40, 40), (bar_x, bar_y, bar_width, bar_height)
-            )
-
-            # Foreground (timer - changes color based on time)
-            fill_width = int(bar_width * time_remaining_ratio)
-            if time_remaining_ratio > 0.5:
-                color = (100, 255, 100)  # Green
-            elif time_remaining_ratio > 0.25:
-                color = (255, 200, 50)  # Yellow
-            else:
-                color = (255, 70, 70)  # Red
-
-            if fill_width > 0:
-                pygame.draw.rect(
-                    self.screen, color, (bar_x, bar_y, fill_width, bar_height)
-                )
-
-            # Border
-            pygame.draw.rect(
-                self.screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), 1
-            )
-
-    def get_visible_height(self, idx, current_time):
-        RISE_DURATION = 300  # ms
-        elapsed = current_time - self.zombie_up_time[idx]
-        t = min(1.0, elapsed / RISE_DURATION)
-        return int(self.zombie_h * t)
-
-    def event_handler(self):
+    def _handle_events(self):
+        """Process all input events."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
+            elif event.type == pygame.KEYDOWN:
+                self._handle_keypress(event.key)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                self._handle_click(event)
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    if self.state == "MENU":
-                        self.reset()
-                    elif self.state == "PLAY":
-                        self.state = "PAUSE"
-                    elif self.state == "PAUSE":
-                        self.state = "PLAY"
-                if event.key == pygame.K_r and self.game_over:
-                    self.reset()
-                    if pygame.mixer.music.get_busy():
-                        pygame.mixer.music.play(-1)
-                if event.key == pygame.K_h:  # Press H to toggle hitboxes
-                    self.show_hitboxes = not self.show_hitboxes
-                    print(f"Hitboxes: {'ON' if self.show_hitboxes else 'OFF'}")
-                if event.key == pygame.K_q:  # Press Q to quit
-                    self.running = False
+    def _handle_keypress(self, key):
+        """Handle keyboard input."""
+        if key == pygame.K_SPACE:
+            self._handle_space_key()
+        elif key == pygame.K_r and self.game_state.is_game_over:
+            self._restart_game()
+        elif key == pygame.K_h:
+            self._toggle_hitboxes()
+        elif key == pygame.K_q:
+            self.running = False
 
-            if (
-                event.type == pygame.MOUSEBUTTONDOWN
-                and self.state == "PLAY"
-                and not self.game_over
-            ):
-                if event.button == 1:  # Left click
-                    mouse_pos = event.pos
-                    hit_any = False
-                    for i, center in enumerate(const.GRID):
-                        if (
-                            self.get_hole_rect(center).collidepoint(mouse_pos)
-                            and self.holes[i]
-                            and not self.hit[i]
-                        ):
-                            self.hit[i] = True
-                            self.score += 10 + (
-                                self.combo // 3
-                            )  # Better scoring for chaos
-                            self.combo += 1
-                            self.max_combo = max(self.max_combo, self.combo)
-                            if self.soundtracks.hit:
-                                self.soundtracks.hit.play()
-                            hit_any = True
-                    if not hit_any and self.combo > 0:
-                        self.combo = 0
-                        if self.soundtracks.miss:
-                            self.soundtracks.miss.play()
+    def _handle_space_key(self):
+        """Handle spacebar press (menu start, pause toggle)."""
+        if self.state == self.STATE_MENU:
+            self.reset_game()
+        elif self.state == self.STATE_PLAY:
+            self.state = self.STATE_PAUSE
+        elif self.state == self.STATE_PAUSE:
+            self.state = self.STATE_PLAY
 
-    def update(self, current_time):
-        if self.state == "PLAY" and not self.game_over:
-            spawn_interval, show_duration, spawn_chance = self.get_current_difficulty()
+    def _restart_game(self):
+        """Restart game after game over."""
+        self.reset_game()
+        if pygame.mixer.music.get_busy():
+            pygame.mixer.music.play(-1)
 
-            # Level up every 40 points (adjusted for higher scores)
-            if self.score >= self.level * 40:
-                self.level += 1
+    def _toggle_hitboxes(self):
+        """Toggle hitbox visualization."""
+        self.show_hitboxes = not self.show_hitboxes
+        print(f"Hitboxes: {'ON' if self.show_hitboxes else 'OFF'}")
 
-            # Spawn attempts
-            if current_time - self.last_spawn_attempt > spawn_interval:
-                self.last_spawn_attempt = current_time
-                if random.random() < spawn_chance:
-                    self.spawn_zombie()
+    def _handle_click(self, event):
+        """Handle mouse click events."""
+        if event.button != 1:  # Only left click
+            return
 
-            # Check timeouts & auto-hide
-            for i in range(20):
-                if self.holes[i]:
-                    elapsed = current_time - self.zombie_up_time[i]
-                    if not self.hit[i] and elapsed > show_duration:
-                        # Missed!
-                        self.holes[i] = False
-                        self.lives -= 1
-                        self.combo = 0
-                        if self.soundtracks.miss:
-                            self.soundtracks.miss.play()
-                        if self.lives <= 0:
-                            self.game_over = True
-                            self.state = "GAMEOVER"
-                    elif self.hit[i] and elapsed > 2000:  # Quick squash animation
-                        self.holes[i] = False
-                        self.hit[i] = False
+        if self.state != self.STATE_PLAY or self.game_state.is_game_over:
+            return
 
-    def draw(self, current_time):
+        mouse_pos = event.pos
+        hit_registered = False
+
+        # Check if click hit any zombie
+        for i, grid_pos in enumerate(const.GRID_POSITIONS):
+            if not self.zombie_manager.is_hole_occupied(i):
+                continue
+
+            zombie = self.zombie_manager.get_zombie(i)
+            if zombie.is_hit:
+                continue
+
+            hitbox = self._get_hitbox(grid_pos)
+            if hitbox.collidepoint(mouse_pos):
+                self._register_hit(i)
+                hit_registered = True
+                break
+
+        # Miss penalty
+        if not hit_registered and self.game_state.combo > 0:
+            self.game_state.break_combo()
+            self.soundtracks.play_miss()
+
+    def _register_hit(self, hole_index):
+        """Register successful zombie hit."""
+        self.zombie_manager.hit_zombie(hole_index)
+
+        # Score with combo bonus
+        points = const.POINTS_PER_HIT + self.game_state.get_combo_bonus()
+        self.game_state.add_score(points)
+        self.game_state.increment_combo()
+
+        self.soundtracks.play_hit()
+
+    # ==================== UPDATE ====================
+
+    def _update(self, current_time):
+        """Update game state."""
+        if self.state != self.STATE_PLAY or self.game_state.is_game_over:
+            return
+
+        difficulty = DifficultyManager.get_difficulty(self.game_state.level)
+
+        # Attempt to spawn zombies
+        self._attempt_spawn(current_time, difficulty)
+
+        # Update existing zombies
+        timeouts = self.zombie_manager.update(current_time, difficulty["show_duration"])
+
+        # Handle timeouts (zombies that escaped)
+        if timeouts > 0:
+            for _ in range(timeouts):
+                self.game_state.lose_life()
+            self.game_state.break_combo()
+            self.soundtracks.play_miss()
+
+            if self.game_state.is_game_over:
+                self.state = self.STATE_GAMEOVER
+
+    def _attempt_spawn(self, current_time, difficulty):
+        """Try to spawn a new zombie."""
+        time_since_last_spawn = current_time - self.last_spawn_attempt
+
+        if time_since_last_spawn <= difficulty["spawn_interval"]:
+            return
+
+        self.last_spawn_attempt = current_time
+
+        # Random chance to spawn
+        if random.random() >= difficulty["spawn_chance"]:
+            return
+
+        # Pick random available hole
+        available_holes = self.zombie_manager.get_available_holes()
+        if not available_holes:
+            return
+
+        hole_index = random.choice(available_holes)
+        self.zombie_manager.spawn(hole_index, current_time)
+
+    # ==================== RENDERING ====================
+
+    def _render(self, current_time):
+        """Render current frame."""
         # Background
         self.screen.blit(self.textures.background, (0, 0))
-        if self.state == "PLAY":
-            # Zombies
-            for i, (x, y) in enumerate(const.GRID):
-                if self.holes[i]:
-                    visible_h = self.get_visible_height(i, current_time)
 
-                    # Calculate time remaining ratio for timer bar
-                    _, show_duration, _ = self.get_current_difficulty()
-                    elapsed = current_time - self.zombie_up_time[i]
-                    time_remaining_ratio = max(0.0, 1.0 - (elapsed / show_duration))
+        if self.state == self.STATE_PLAY:
+            self._render_gameplay(current_time)
 
-                    self.draw_zombie(x, y, self.hit[i], visible_h, time_remaining_ratio)
-
-            # Hitbox
-            if self.show_hitboxes:
-                for i, center in enumerate(const.GRID):
-                    rect = self.get_hole_rect(center)
-                    # Draw all hitboxes in red (always visible when toggled)
-                    pygame.draw.rect(self.screen, const.RED, rect, 3)
-
-                    pygame.draw.circle(self.screen, (255, 255, 255), rect.center, 5)
-            # UI
-            score_text = self.font.render(f"{self.score}", True, const.WHITE)
-            lives_text = self.font.render(
-                f"LIVES: {self.lives}",
-                True,
-                (255, 70, 70) if self.lives <= 2 else (160, 220, 255),
-            )
-            combo_text = (
-                self.small_font.render(f"COMBO x{self.combo}", True, (255, 220, 80))
-                if self.combo >= 3
-                else None
-            )
-            level_text = self.small_font.render(
-                f"LEVEL {self.level}", True, (180, 255, 180)
-            )
-
-            self.screen.blit(score_text, (40, 20))
-            self.screen.blit(
-                lives_text, (const.WIDTH - lives_text.get_width() - 40, 20)
-            )
-            if combo_text:
-                self.screen.blit(
-                    combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
-                )
-            self.screen.blit(level_text, (40, 120))
-
-        overlay = pygame.Surface((const.WIDTH, const.HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
-        if self.state == "MENU":
-            self.screen.blit(overlay, (0, 0))
-            title_text = self.font.render("WHACK-A-ZOMBIE", True, const.WHITE)
-            start_text = self.small_font.render(
-                "Press SPACEBAR to START", True, (160, 240, 160)
-            )
-            instruct_text = self.small_font.render(
-                "Whack zombies before they escape! (H for hitboxes)",
-                True,
-                (220, 220, 240),
-            )
-
-            # Centered positions
-            title_rect = title_text.get_rect(
-                center=(const.WIDTH // 2, const.HEIGHT // 2 - 80)
-            )
-            start_rect = start_text.get_rect(
-                center=(const.WIDTH // 2, const.HEIGHT // 2 + 20)
-            )
-            instruct_rect = instruct_text.get_rect(
-                center=(const.WIDTH // 2, const.HEIGHT // 2 + 80)
-            )
-
-            self.screen.blit(title_text, title_rect)
-            self.screen.blit(start_text, start_rect)
-            self.screen.blit(instruct_text, instruct_rect)
-        elif self.state == "PAUSE":
-            self.screen.blit(overlay, (0, 0))
-            paused_text = self.font.render("PAUSED", True, (255, 220, 80))
-            resume_text = self.small_font.render(
-                "SPACE to resume (Q quit)", True, (160, 240, 160)
-            )
-            paused_rect = paused_text.get_rect(
-                center=(const.WIDTH // 2, const.HEIGHT // 2 - 40)
-            )
-            resume_rect = resume_text.get_rect(
-                center=(const.WIDTH // 2, const.HEIGHT // 2 + 40)
-            )
-            self.screen.blit(paused_text, paused_rect)
-            self.screen.blit(resume_text, resume_rect)
-
-        # Game Over
-        if self.game_over:
-            self.screen.blit(overlay, (0, 0))
-
-            go_text = self.font.render("GAME OVER", True, (255, 60, 60))
-            final_text = self.small_font.render(
-                f"Final Score: {self.score} | Best Combo: {self.max_combo}",
-                True,
-                (220, 220, 240),
-            )
-            restart_text = self.small_font.render(
-                "Press R to play again", True, (160, 240, 160)
-            )
-
-            self.screen.blit(
-                go_text,
-                (
-                    const.WIDTH // 2 - go_text.get_width() // 2,
-                    const.HEIGHT // 2 - 100,
-                ),
-            )
-            self.screen.blit(
-                final_text,
-                (const.WIDTH // 2 - final_text.get_width() // 2, const.HEIGHT // 2),
-            )
-            self.screen.blit(
-                restart_text,
-                (
-                    const.WIDTH // 2 - restart_text.get_width() // 2,
-                    const.HEIGHT // 2 + 80,
-                ),
-            )
+        self._render_overlay(current_time)
 
         pygame.display.flip()
+
+    def _render_gameplay(self, current_time):
+        """Render active gameplay elements."""
+        difficulty = DifficultyManager.get_difficulty(self.game_state.level)
+
+        # Draw zombies
+        for i, grid_pos in enumerate(const.GRID_POSITIONS):
+            zombie = self.zombie_manager.get_zombie(i)
+            if zombie:
+                self._render_zombie(
+                    zombie, grid_pos, current_time, difficulty["show_duration"]
+                )
+
+        # Draw hitboxes (debug)
+        if self.show_hitboxes:
+            self._render_hitboxes()
+
+        # Draw UI
+        self._render_ui()
+
+    def _render_zombie(self, zombie, grid_pos, current_time, show_duration):
+        """Render a single zombie."""
+        x, y = grid_pos
+
+        # Squashed zombie (hit)
+        if zombie.is_hit:
+            self.screen.blit(self.textures.zombie_sprite_squashed, (x - 50, y - 20))
+            return
+
+        # Rising zombie
+        visible_height = zombie.get_visible_height(current_time, self.zombie_height)
+        if visible_height <= 0:
+            return
+
+        # Crop sprite from top (head appears first)
+        crop_rect = pygame.Rect(0, 0, self.zombie_width, visible_height)
+        cropped_sprite = self.textures.zombie_sprite.subsurface(crop_rect)
+        self.screen.blit(cropped_sprite, (x - 50, y - visible_height))
+
+        # Timer bar (only when mostly visible)
+        if zombie.is_fully_risen(current_time, self.zombie_height):
+            time_ratio = zombie.get_time_remaining_ratio(current_time, show_duration)
+            self._render_timer_bar(x, y - visible_height, time_ratio)
+
+    def _render_timer_bar(self, x, y, time_ratio):
+        """Render countdown timer above zombie head."""
+        bar_width = 60
+        bar_height = 6
+        bar_x = x - bar_width // 2 - 10
+        bar_y = y - 15
+
+        # Background
+        pygame.draw.rect(
+            self.screen, (40, 40, 40), (bar_x, bar_y, bar_width, bar_height)
+        )
+
+        # Colored fill (changes based on time remaining)
+        fill_width = int(bar_width * time_ratio)
+        if time_ratio > 0.5:
+            color = (100, 255, 100)  # Green
+        elif time_ratio > 0.25:
+            color = (255, 200, 50)  # Yellow
+        else:
+            color = (255, 70, 70)  # Red
+
+        if fill_width > 0:
+            pygame.draw.rect(self.screen, color, (bar_x, bar_y, fill_width, bar_height))
+
+        # Border
+        pygame.draw.rect(
+            self.screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), 1
+        )
+
+    def _render_hitboxes(self):
+        """Render hitbox visualization (debug)."""
+        for grid_pos in const.GRID_POSITIONS:
+            hitbox = self._get_hitbox(grid_pos)
+            pygame.draw.rect(self.screen, const.RED, hitbox, 3)
+            pygame.draw.circle(self.screen, const.WHITE, hitbox.center, 5)
+
+    def _render_ui(self):
+        """Render UI elements (score, lives, combo, level)."""
+        # Score
+        score_text = self.font_large.render(
+            f"{self.game_state.score}", True, const.WHITE
+        )
+        self.screen.blit(score_text, (40, 20))
+
+        # Lives (red if low)
+        lives_color = (255, 70, 70) if self.game_state.lives <= 2 else (160, 220, 255)
+        lives_text = self.font_large.render(
+            f"LIVES: {self.game_state.lives}", True, lives_color
+        )
+        self.screen.blit(lives_text, (const.WIDTH - lives_text.get_width() - 40, 20))
+
+        # Combo (only show if >= 3)
+        if self.game_state.combo >= const.COMBO_DISPLAY_THRESHOLD:
+            combo_text = self.font_small.render(
+                f"COMBO x{self.game_state.combo}", True, (255, 220, 80)
+            )
+            self.screen.blit(
+                combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
+            )
+
+        # Level
+        level_text = self.font_small.render(
+            f"LEVEL {self.game_state.level}", True, (180, 255, 180)
+        )
+        self.screen.blit(level_text, (40, 120))
+
+    def _render_overlay(self, current_time):
+        """Render menu/pause/gameover overlays."""
+        if self.state == self.STATE_MENU:
+            self._render_menu()
+        elif self.state == self.STATE_PAUSE:
+            self._render_pause()
+        elif self.state == self.STATE_GAMEOVER:
+            self._render_gameover()
+
+    def _render_menu(self):
+        """Render main menu."""
+        overlay = self._create_overlay()
+        self.screen.blit(overlay, (0, 0))
+
+        title_text = self.font_large.render("WHACK-A-ZOMBIE", True, const.WHITE)
+        start_text = self.font_small.render(
+            "Press SPACEBAR to START", True, (160, 240, 160)
+        )
+        instruct_text = self.font_small.render(
+            "Whack zombies before they escape! (H for hitboxes)", True, (220, 220, 240)
+        )
+
+        self._center_blit(title_text, const.HEIGHT // 2 - 80)
+        self._center_blit(start_text, const.HEIGHT // 2 + 20)
+        self._center_blit(instruct_text, const.HEIGHT // 2 + 80)
+
+    def _render_pause(self):
+        """Render pause screen."""
+        overlay = self._create_overlay()
+        self.screen.blit(overlay, (0, 0))
+
+        paused_text = self.font_large.render("PAUSED", True, (255, 220, 80))
+        resume_text = self.font_small.render(
+            "SPACE to resume (Q quit)", True, (160, 240, 160)
+        )
+
+        self._center_blit(paused_text, const.HEIGHT // 2 - 40)
+        self._center_blit(resume_text, const.HEIGHT // 2 + 40)
+
+    def _render_gameover(self):
+        """Render game over screen."""
+        overlay = self._create_overlay()
+        self.screen.blit(overlay, (0, 0))
+
+        gameover_text = self.font_large.render("GAME OVER", True, (255, 60, 60))
+        stats_text = self.font_small.render(
+            f"Final Score: {self.game_state.score} | Best Combo: {self.game_state.max_combo}",
+            True,
+            (220, 220, 240),
+        )
+        restart_text = self.font_small.render(
+            "Press R to play again", True, (160, 240, 160)
+        )
+
+        self._center_blit(gameover_text, const.HEIGHT // 2 - 100)
+        self._center_blit(stats_text, const.HEIGHT // 2)
+        self._center_blit(restart_text, const.HEIGHT // 2 + 80)
+
+    # ==================== HELPERS ====================
+
+    def _get_hitbox(self, grid_pos):
+        """Get hitbox rectangle for a grid position."""
+        x, y = grid_pos
+        return pygame.Rect(
+            x - self.zombie_half_width - 10,
+            y - self.zombie_height,
+            self.zombie_width + 10,
+            self.zombie_height,
+        )
+
+    def _create_overlay(self):
+        """Create semi-transparent overlay surface."""
+        overlay = pygame.Surface((const.WIDTH, const.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        return overlay
+
+    def _center_blit(self, surface, y_pos):
+        """Blit surface centered horizontally at given y position."""
+        x_pos = const.WIDTH // 2 - surface.get_width() // 2
+        self.screen.blit(surface, (x_pos, y_pos))
