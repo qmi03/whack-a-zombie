@@ -32,7 +32,7 @@ class Game:
 
             self.event_handler()
             self.update(current_time)
-            self.draw()
+            self.draw(current_time)
         pygame.quit()
 
     def reset(self):
@@ -71,11 +71,39 @@ class Game:
             x - self.half_w - 10, y - self.zombie_h, self.zombie_w + 10, self.zombie_h
         )
 
-    def draw_zombie(self, x, y, is_hit):
-        if not is_hit:
-            self.screen.blit(self.textures.zombie_sprite, (x - 50, y - 128))
-        else:
-            self.screen.blit(self.textures.zombie_sprite_squashed, (x - 50, y - 20))
+    def draw_zombie(self, x, y, is_hit, visible_h):
+        if is_hit:
+            self.screen.blit(
+                self.textures.zombie_sprite_squashed,
+                (x - 50, y - 20),
+            )
+            return
+
+        if visible_h <= 0:
+            return
+
+        # Crop from TOP downward (head appears first)
+        crop_rect = pygame.Rect(
+            0,
+            0,  # Start from top of sprite (head)
+            self.zombie_w,
+            visible_h,
+        )
+
+        cropped = self.textures.zombie_sprite.subsurface(crop_rect)
+
+        # Position so the cropped portion appears at the bottom and rises up
+        self.screen.blit(
+            cropped,
+            (x - 50, y - visible_h),
+        )
+
+
+    def get_visible_height(self, idx, current_time):
+        RISE_DURATION = 300  # ms
+        elapsed = current_time - self.zombie_up_time[idx]
+        t = min(1.0, elapsed / RISE_DURATION)
+        return int(self.zombie_h * t)
 
     def event_handler(self):
         for event in pygame.event.get():
@@ -160,7 +188,7 @@ class Game:
                         self.holes[i] = False
                         self.hit[i] = False
 
-    def draw(self):
+    def draw(self, current_time):
         # Background
         self.screen.blit(self.textures.background, (0, 0))
 
@@ -168,7 +196,8 @@ class Game:
             # Zombies
             for i, (x, y) in enumerate(const.GRID):
                 if self.holes[i]:
-                    self.draw_zombie(x, y, self.hit[i])
+                    visible_h = self.get_visible_height(i, current_time)
+                    self.draw_zombie(x, y, self.hit[i], visible_h)
 
             # Hitbox
             if self.show_hitboxes:
