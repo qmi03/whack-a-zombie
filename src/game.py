@@ -71,7 +71,7 @@ class Game:
             x - self.half_w - 10, y - self.zombie_h, self.zombie_w + 10, self.zombie_h
         )
 
-    def draw_zombie(self, x, y, is_hit, visible_h):
+    def draw_zombie(self, x, y, is_hit, visible_h, time_remaining_ratio=1.0):
         if is_hit:
             self.screen.blit(
                 self.textures.zombie_sprite_squashed,
@@ -98,6 +98,36 @@ class Game:
             (x - 50, y - visible_h),
         )
 
+        # Draw timer bar above zombie head
+        if visible_h >= self.zombie_h * 0.8:  # Only show when mostly risen
+            bar_width = 60
+            bar_height = 6
+            bar_x = x - bar_width // 2 - 10
+            bar_y = y - visible_h - 15
+
+            # Background (dark)
+            pygame.draw.rect(
+                self.screen, (40, 40, 40), (bar_x, bar_y, bar_width, bar_height)
+            )
+
+            # Foreground (timer - changes color based on time)
+            fill_width = int(bar_width * time_remaining_ratio)
+            if time_remaining_ratio > 0.5:
+                color = (100, 255, 100)  # Green
+            elif time_remaining_ratio > 0.25:
+                color = (255, 200, 50)  # Yellow
+            else:
+                color = (255, 70, 70)  # Red
+
+            if fill_width > 0:
+                pygame.draw.rect(
+                    self.screen, color, (bar_x, bar_y, fill_width, bar_height)
+                )
+
+            # Border
+            pygame.draw.rect(
+                self.screen, (200, 200, 200), (bar_x, bar_y, bar_width, bar_height), 1
+            )
 
     def get_visible_height(self, idx, current_time):
         RISE_DURATION = 300  # ms
@@ -191,13 +221,18 @@ class Game:
     def draw(self, current_time):
         # Background
         self.screen.blit(self.textures.background, (0, 0))
-
         if self.state == "PLAY":
             # Zombies
             for i, (x, y) in enumerate(const.GRID):
                 if self.holes[i]:
                     visible_h = self.get_visible_height(i, current_time)
-                    self.draw_zombie(x, y, self.hit[i], visible_h)
+
+                    # Calculate time remaining ratio for timer bar
+                    _, show_duration, _ = self.get_current_difficulty()
+                    elapsed = current_time - self.zombie_up_time[i]
+                    time_remaining_ratio = max(0.0, 1.0 - (elapsed / show_duration))
+
+                    self.draw_zombie(x, y, self.hit[i], visible_h, time_remaining_ratio)
 
             # Hitbox
             if self.show_hitboxes:
