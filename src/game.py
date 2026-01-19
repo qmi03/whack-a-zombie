@@ -76,11 +76,15 @@ class Game:
                 self.running = False
 
             if event.type == pygame.KEYDOWN:
-                if self.state == "MENU" and event.key == pygame.K_SPACE:
-                    self.state = "PLAY"
+                if event.key == pygame.K_SPACE:
+                    if self.state == "MENU":
+                        self.reset()
+                    elif self.state == "PLAY":
+                        self.state = "PAUSE"
+                    elif self.state == "PAUSE":
+                        self.state = "PLAY"
                 if event.key == pygame.K_r and self.game_over:
                     self.reset()
-                    self.state = "PLAY"
                     if pygame.mixer.music.get_busy():
                         pygame.mixer.music.play(-1)
                 if event.key == pygame.K_h:  # Press H to toggle hitboxes
@@ -154,11 +158,12 @@ class Game:
         self.screen.blit(self.textures.background, (0, 0))
 
         if self.state == "PLAY":
-            # Draw zombies OVER the background holes
+            # Zombies
             for i, (x, y) in enumerate(const.GRID):
                 if self.holes[i]:
                     self.draw_zombie(x, y, self.hit[i])
 
+            # Hitbox
             if self.show_hitboxes:
                 for i, center in enumerate(const.GRID):
                     rect = self.get_hole_rect(center)
@@ -220,6 +225,16 @@ class Game:
             self.screen.blit(title_text, title_rect)
             self.screen.blit(start_text, start_rect)
             self.screen.blit(instruct_text, instruct_rect)
+        elif self.state == "PAUSE":
+            self.screen.blit(overlay, (0, 0))
+            paused_text = self.font.render("PAUSED", True, (255, 220, 80))
+            resume_text = self.small_font.render(
+                "SPACE to resume (Q quit)", True, (160, 240, 160)
+            )
+            paused_rect = paused_text.get_rect(center=(const.WIDTH // 2, const.HEIGHT // 2 - 40))
+            resume_rect = resume_text.get_rect(center=(const.WIDTH // 2, const.HEIGHT // 2 + 40))
+            self.screen.blit(paused_text, paused_rect)
+            self.screen.blit(resume_text, resume_rect)
 
         # Game Over
         if self.game_over:
