@@ -17,6 +17,7 @@ class Game:
         )
         self.reset()
         self.state = "MENU"
+        self.show_hitboxes = False
 
     def run(self):
         self.running = True
@@ -43,7 +44,6 @@ class Game:
         self.zombie_up_time = [0] * 20
         self.hit = [False] * 20
         self.last_spawn_attempt = pygame.time.get_ticks()
-        self.show_hitboxes = False
 
     def spawn_zombie(self):
         available = [i for i, up in enumerate(self.holes) if not up]
