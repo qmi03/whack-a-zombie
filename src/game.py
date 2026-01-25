@@ -22,6 +22,8 @@ class GameState:
         self.max_combo = 0
         self.level = 1
         self.is_game_over = False
+        self.hit_count = 0
+        self.miss_count = 0
 
     def add_score(self, points):
         """Add points to score and check for level up."""
@@ -49,6 +51,21 @@ class GameState:
     def get_combo_bonus(self):
         """Calculate bonus points from current combo."""
         return self.combo // const.COMBO_BONUS_DIVISOR
+
+    def register_hit(self):
+        """Increment hit counter"""
+        self.hit_count += 1
+
+    def register_miss(self):
+        """Increment miss counter"""
+        self.miss_count += 1
+
+    def get_hit_ratio(self):
+        """Calculate hit ratio"""
+        total = self.hit_count + self.miss_count
+        if total == 0:
+            return 0.0
+        return self.hit_count / total * 100.0
 
 
 class DifficultyManager:
@@ -228,6 +245,7 @@ class Game:
         # Miss penalty
         if not hit_registered and self.game_state.combo > 0:
             self.game_state.break_combo()
+            self.game_state.register_miss()
             self.soundtracks.play_miss()
 
     def _register_hit(self, hole_index):
@@ -238,6 +256,7 @@ class Game:
         points = const.POINTS_PER_HIT + self.game_state.get_combo_bonus()
         self.game_state.add_score(points)
         self.game_state.increment_combo()
+        self.game_state.register_hit()
 
         self.soundtracks.play_hit()
 
@@ -261,6 +280,7 @@ class Game:
         if timeouts > 0:
             for _ in range(timeouts):
                 self.game_state.lose_life()
+                self.game_state.register_miss()
             self.game_state.break_combo()
             self.soundtracks.play_miss()
 
@@ -384,33 +404,52 @@ class Game:
 
     def _render_ui(self):
         """Render UI elements (score, lives, combo, level)."""
+
         # Score
         score_text = self.font_large.render(
             f"{self.game_state.score}", True, const.WHITE
         )
-        self.screen.blit(score_text, (40, 20))
+        score_x, score_y = 40, 20
+        self.screen.blit(score_text, (score_x, score_y))
+
+        # Hit/Miss Stats (to the right of score)
+        hit_ratio = self.game_state.get_hit_ratio()
+        stats_text = self.font_small.render(
+            f"HITS: {self.game_state.hit_count} | MISS: {self.game_state.miss_count} | ACC: {hit_ratio:.1f}%",
+            True,
+            (200, 200, 200),
+        )
+        padding = 20
+        stats_x = score_x + max(150, score_text.get_width()) + padding
+        stats_y = score_y + (score_text.get_height() - stats_text.get_height()) // 2
+        self.screen.blit(stats_text, (stats_x, stats_y))
 
         # Lives (red if low)
         lives_color = (255, 70, 70) if self.game_state.lives <= 2 else (160, 220, 255)
         lives_text = self.font_large.render(
             f"LIVES: {self.game_state.lives}", True, lives_color
         )
-        self.screen.blit(lives_text, (const.WIDTH - lives_text.get_width() - 40, 20))
+        lives_x = const.WIDTH - lives_text.get_width() - 40
+        lives_y = 20
+        self.screen.blit(lives_text, (lives_x, lives_y))
 
-        # Combo (only show if >= 3)
+        # Level (under lives)
+        level_text = self.font_small.render(
+            f"LEVEL {self.game_state.level}", True, (180, 255, 180)
+        )
+        level_x = const.WIDTH - level_text.get_width() - 40
+        level_y = lives_y + lives_text.get_height() + 8
+        self.screen.blit(level_text, (level_x, level_y))
+
+        # Combo (only show if >= threshold)
         if self.game_state.combo >= const.COMBO_DISPLAY_THRESHOLD:
             combo_text = self.font_small.render(
                 f"COMBO x{self.game_state.combo}", True, (255, 220, 80)
             )
             self.screen.blit(
-                combo_text, (const.WIDTH // 2 - combo_text.get_width() // 2, 80)
+                combo_text,
+                (const.WIDTH // 2 - combo_text.get_width() // 2, 80),
             )
-
-        # Level
-        level_text = self.font_small.render(
-            f"LEVEL {self.game_state.level}", True, (180, 255, 180)
-        )
-        self.screen.blit(level_text, (40, 120))
 
     def _render_overlay(self):
         """Render menu/pause/gameover overlays."""
@@ -457,18 +496,30 @@ class Game:
         self.screen.blit(overlay, (0, 0))
 
         gameover_text = self.font_large.render("GAME OVER", True, (255, 60, 60))
+
+        # Final stats with hit ratio
+        hit_ratio = self.game_state.get_hit_ratio()
         stats_text = self.font_small.render(
             f"Final Score: {self.game_state.score} | Best Combo: {self.game_state.max_combo}",
             True,
             (220, 220, 240),
         )
+
+        # Hit accuracy stats
+        accuracy_text = self.font_small.render(
+            f"Hits: {self.game_state.hit_count} | Misses: {self.game_state.miss_count} | Accuracy: {hit_ratio:.1f}%",
+            True,
+            (180, 220, 255),
+        )
+
         restart_text = self.font_small.render(
             "Press R to play again", True, (160, 240, 160)
         )
 
-        self._center_blit(gameover_text, const.HEIGHT // 2 - 100)
-        self._center_blit(stats_text, const.HEIGHT // 2)
-        self._center_blit(restart_text, const.HEIGHT // 2 + 80)
+        self._center_blit(gameover_text, const.HEIGHT // 2 - 120)
+        self._center_blit(stats_text, const.HEIGHT // 2 - 20)
+        self._center_blit(accuracy_text, const.HEIGHT // 2 + 30)
+        self._center_blit(restart_text, const.HEIGHT // 2 + 100)
 
     # ==================== HELPERS ====================
 
