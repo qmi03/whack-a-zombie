@@ -151,11 +151,10 @@ class Game:
 
         while self.running:
             self.clock.tick(60)
-            current_time = self._get_game_time()
 
             self._handle_events()
             self._update()
-            self._render(current_time)
+            self._render()
 
         pygame.quit()
 
@@ -310,7 +309,7 @@ class Game:
 
     # ==================== RENDERING ====================
 
-    def _render(self, current_time):
+    def _render(self):
         """Render current frame."""
         # Background
         self.screen.blit(self.textures.background, (0, 0))
