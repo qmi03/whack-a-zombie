@@ -103,6 +103,8 @@ class Game:
         # Timing
         self.clock = pygame.time.Clock()
         self.last_spawn_attempt = 0
+        self.total_pause_time = 0
+        self.pause_start_time = 0
 
         # Fonts
         self.font_large = pygame.font.Font(
@@ -132,10 +134,10 @@ class Game:
 
         while self.running:
             self.clock.tick(60)
-            current_time = pygame.time.get_ticks()
+            current_time = self._get_game_time()
 
             self._handle_events()
-            self._update(current_time)
+            self._update()
             self._render(current_time)
 
         pygame.quit()
@@ -145,7 +147,8 @@ class Game:
         self.game_state.reset()
         self.zombie_manager.reset()
         self.state = self.STATE_PLAY
-        self.last_spawn_attempt = pygame.time.get_ticks()
+        self.total_pause_time = 0
+        self.last_spawn_attempt = self._get_game_time()
 
     # ==================== EVENT HANDLING ====================
 
@@ -176,8 +179,14 @@ class Game:
             self.reset_game()
         elif self.state == self.STATE_PLAY:
             self.state = self.STATE_PAUSE
+            self.pause_start_time = pygame.time.get_ticks()
         elif self.state == self.STATE_PAUSE:
             self.state = self.STATE_PLAY
+            pause_duration = pygame.time.get_ticks() - self.pause_start_time
+            self.total_pause_time += pause_duration
+
+    def _get_game_time(self):
+        return pygame.time.get_ticks() - self.total_pause_time
 
     def _restart_game(self):
         """Restart game after game over."""
@@ -234,7 +243,7 @@ class Game:
 
     # ==================== UPDATE ====================
 
-    def _update(self, current_time):
+    def _update(self):
         """Update game state."""
         if self.state != self.STATE_PLAY or self.game_state.is_game_over:
             return
@@ -242,6 +251,7 @@ class Game:
         difficulty = DifficultyManager.get_difficulty(self.game_state.level)
 
         # Attempt to spawn zombies
+        current_time = self._get_game_time()
         self._attempt_spawn(current_time, difficulty)
 
         # Update existing zombies
@@ -286,9 +296,10 @@ class Game:
         self.screen.blit(self.textures.background, (0, 0))
 
         if self.state == self.STATE_PLAY:
+            current_time = self._get_game_time()
             self._render_gameplay(current_time)
 
-        self._render_overlay(current_time)
+        self._render_overlay()
 
         pygame.display.flip()
 
@@ -401,7 +412,7 @@ class Game:
         )
         self.screen.blit(level_text, (40, 120))
 
-    def _render_overlay(self, current_time):
+    def _render_overlay(self):
         """Render menu/pause/gameover overlays."""
         if self.state == self.STATE_MENU:
             self._render_menu()
